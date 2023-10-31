@@ -1,0 +1,47 @@
+[2023-10-31 12:34:38 root] (main.py 274): INFO Namespace(model_cache_dir='../LLMs', calib_cache_dir='./cache', net='opt-125m', output_dir='./log/opt-125m-w3a16', epochs=2, save_dir=None, resume=None, real_quant=False, calib_dataset='wikitext2', nsamples=128, batch_size=1, seed=2, tasks='', eval_ppl=True, num_fewshot=0, wbits=3, abits=8, group_size=None, alpha=0.5, let_lr=0.005, lwc_lr=0.01, wd=0, let=True, lwc=True, aug_loss=False, symmetric=False, a_dynamic_method='per_cluster', w_dynamic_method='per_channel', limit=-1, multigpu=False, deactive_amp=True, act_scales=None, act_shifts=None, a_dynamic=False, metric='ema_minmax', reorder='', R1_clusters=32, R2_clusters=4, R3_clusters=4, R4_clusters=32, R5_clusters=32, weight_exp_quant=True, w_symmetric=True)
+[2023-10-31 12:34:38 root] (main.py 383): INFO === start quantization ===
+[2023-10-31 12:34:38 root] (main.py 389): INFO load calibration from ./cache/dataloader_opt_wikitext2_128.cache
+[2023-10-31 12:34:38 root] (omniquant.py 225): INFO Starting ...
+[2023-10-31 12:34:41 root] (omniquant.py 367): INFO === Start quantize layer 0 ===
+[2023-10-31 12:34:46 root] (omniquant.py 508): INFO layer 0 iter 0 loss:0.001177478116005659 norm:0.0004761975724250078 max memory_allocated 3768.109375 
+[2023-10-31 12:34:49 root] (omniquant.py 508): INFO layer 0 iter 1 loss:0.000939595396630466 norm:0.00021160532196518034 max memory_allocated 3769.4853515625 
+[2023-10-31 12:34:50 root] (omniquant.py 367): INFO === Start quantize layer 1 ===
+[2023-10-31 12:34:58 root] (omniquant.py 508): INFO layer 1 iter 0 loss:0.0017845858819782734 norm:0.0012961754109710455 max memory_allocated 3770.005859375 
+[2023-10-31 12:35:03 root] (omniquant.py 508): INFO layer 1 iter 1 loss:0.0012915050610899925 norm:0.0005309599218890071 max memory_allocated 3771.505859375 
+[2023-10-31 12:35:03 root] (omniquant.py 367): INFO === Start quantize layer 2 ===
+[2023-10-31 12:35:07 root] (omniquant.py 508): INFO layer 2 iter 0 loss:0.0038168486207723618 norm:0.0019223878625780344 max memory_allocated 3771.505859375 
+[2023-10-31 12:35:10 root] (omniquant.py 508): INFO layer 2 iter 1 loss:0.0029487633146345615 norm:0.0008851767634041607 max memory_allocated 3772.0263671875 
+[2023-10-31 12:35:11 root] (omniquant.py 367): INFO === Start quantize layer 3 ===
+[2023-10-31 12:35:17 root] (omniquant.py 508): INFO layer 3 iter 0 loss:0.0041717891581356525 norm:0.0008057615486904979 max memory_allocated 3772.046875 
+[2023-10-31 12:35:26 root] (omniquant.py 508): INFO layer 3 iter 1 loss:0.003557550022378564 norm:0.00046542988275177777 max memory_allocated 3772.046875 
+[2023-10-31 12:35:26 root] (omniquant.py 367): INFO === Start quantize layer 4 ===
+[2023-10-31 12:35:34 root] (omniquant.py 508): INFO layer 4 iter 0 loss:0.006078927777707577 norm:0.000799989327788353 max memory_allocated 3772.046875 
+[2023-10-31 12:35:38 root] (omniquant.py 508): INFO layer 4 iter 1 loss:0.004828377161175013 norm:0.00034864540793932974 max memory_allocated 3772.046875 
+[2023-10-31 12:35:39 root] (omniquant.py 367): INFO === Start quantize layer 5 ===
+[2023-10-31 12:35:42 root] (omniquant.py 508): INFO layer 5 iter 0 loss:0.007081210613250732 norm:0.0002997326082549989 max memory_allocated 3772.046875 
+[2023-10-31 12:35:46 root] (omniquant.py 508): INFO layer 5 iter 1 loss:0.006502545438706875 norm:0.0002075314405374229 max memory_allocated 3772.046875 
+[2023-10-31 12:35:46 root] (omniquant.py 367): INFO === Start quantize layer 6 ===
+[2023-10-31 12:35:55 root] (omniquant.py 508): INFO layer 6 iter 0 loss:0.010446185246109962 norm:0.0004596879880409688 max memory_allocated 3772.046875 
+[2023-10-31 12:36:03 root] (omniquant.py 508): INFO layer 6 iter 1 loss:0.009334353730082512 norm:0.00029584369622170925 max memory_allocated 3772.046875 
+[2023-10-31 12:36:04 root] (omniquant.py 367): INFO === Start quantize layer 7 ===
+[2023-10-31 12:36:12 root] (omniquant.py 508): INFO layer 7 iter 0 loss:0.013813536614179611 norm:0.00043357518734410405 max memory_allocated 3772.046875 
+[2023-10-31 12:36:21 root] (omniquant.py 508): INFO layer 7 iter 1 loss:0.012787205167114735 norm:0.0003254695038776845 max memory_allocated 3774.62890625 
+[2023-10-31 12:36:21 root] (omniquant.py 367): INFO === Start quantize layer 8 ===
+[2023-10-31 12:36:30 root] (omniquant.py 508): INFO layer 8 iter 0 loss:0.022161830216646194 norm:0.0007658004760742188 max memory_allocated 3774.6494140625 
+[2023-10-31 12:36:38 root] (omniquant.py 508): INFO layer 8 iter 1 loss:0.020411264151334763 norm:0.0005911114858463407 max memory_allocated 3776.1494140625 
+[2023-10-31 12:36:39 root] (omniquant.py 367): INFO === Start quantize layer 9 ===
+[2023-10-31 12:36:48 root] (omniquant.py 508): INFO layer 9 iter 0 loss:0.03650364279747009 norm:0.0010525839170441031 max memory_allocated 3776.1494140625 
+[2023-10-31 12:36:56 root] (omniquant.py 508): INFO layer 9 iter 1 loss:0.03401556611061096 norm:0.0008519667317159474 max memory_allocated 3776.1494140625 
+[2023-10-31 12:36:57 root] (omniquant.py 367): INFO === Start quantize layer 10 ===
+[2023-10-31 12:37:01 root] (omniquant.py 508): INFO layer 10 iter 0 loss:0.060240428894758224 norm:0.001897773938253522 max memory_allocated 3776.1494140625 
+[2023-10-31 12:37:04 root] (omniquant.py 508): INFO layer 10 iter 1 loss:0.05551828071475029 norm:0.0016287837643176317 max memory_allocated 3776.1494140625 
+[2023-10-31 12:37:05 root] (omniquant.py 367): INFO === Start quantize layer 11 ===
+[2023-10-31 12:37:08 root] (omniquant.py 508): INFO layer 11 iter 0 loss:0.16414451599121094 norm:0.08998025208711624 max memory_allocated 3776.1494140625 
+[2023-10-31 12:37:12 root] (omniquant.py 508): INFO layer 11 iter 1 loss:0.11444368213415146 norm:0.00902295857667923 max memory_allocated 3776.1494140625 
+[2023-10-31 12:37:13 root] (main.py 412): INFO 154.36328053474426
+[2023-10-31 12:37:13 root] (main.py 102): INFO load calibration from ./cache/testloader_opt_wikitext2_all.cache
+[2023-10-31 12:37:17 root] (main.py 147): INFO wikitext2 : 470.14508056640625
+[2023-10-31 12:37:17 root] (main.py 102): INFO load calibration from ./cache/testloader_opt_ptb_all.cache
+[2023-10-31 12:37:18 root] (main.py 147): INFO ptb : 658.0206298828125
+[2023-10-31 12:37:18 root] (main.py 102): INFO load calibration from ./cache/testloader_opt_c4_all.cache
+[2023-10-31 12:37:25 root] (main.py 147): INFO c4 : 320.3337707519531

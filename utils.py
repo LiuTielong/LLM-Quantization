@@ -6,7 +6,7 @@ from termcolor import colored
 import sys
 import os
 import time
-
+clipmin = 1e-4
 
 def ampscaler_get_grad_norm(parameters, norm_type: float = 2.0) -> torch.Tensor:
     if isinstance(parameters, torch.Tensor):
