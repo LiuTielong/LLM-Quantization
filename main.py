@@ -198,7 +198,7 @@ def main():
     # parser.add_argument("--output_dir", default="./log/llama-2-7b-w3a16", type=str, help="direction of logging file")
     parser.add_argument("--net", type=str, default="opt-125m", choices=net_choices)
     parser.add_argument("--output_dir", default="./log/opt-125m-w3a16", type=str, help="direction of logging file")
-    parser.add_argument("--epochs", type=int, default=0)                                                                # ltl
+    parser.add_argument("--epochs", type=int, default=2)                                                                # ltl
     parser.add_argument("--save_dir", default=None, type=str, help="direction for saving fake quantization model")
     parser.add_argument("--resume", type=str, default=None)
     parser.add_argument("--real_quant", default=False, action="store_true",)
@@ -245,9 +245,10 @@ def main():
     parser.add_argument("--R3_clusters", type=int, default=4)
     parser.add_argument("--R4_clusters", type=int, default=32)
     parser.add_argument("--R5_clusters", type=int, default=32)
-    parser.add_argument("--weight_exp_quant", action="store_true",default=True,
+    parser.add_argument("--weight_exp_quant", action="store_true",
                         help="use exponent quantization for weights") # ltl
-    parser.add_argument("--w_symmetric", action="store_true",default=True)      # 经过我的测试，对指数量化来说，非对称量化竟然不如对称量化，loss也更大
+    parser.add_argument("--w_symmetric", action="store_true")      # 经过我的测试，对指数量化来说，非对称量化竟然不如对称量化，loss也更大,所以如果加了weight_exp_quant，就一定要加w_symmetric
+    parser.add_argument("weight_mix", action="store_true")          # 是否使用混合bit量化weights，并展开搜索
 
     args = parser.parse_args()
     random.seed(args.seed)
@@ -430,6 +431,6 @@ def main():
 
 
 if __name__ == "__main__":
-    print("ok")
     print(sys.argv)
     main()
+
