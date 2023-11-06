@@ -49,6 +49,7 @@ class QuantOPTAttention(nn.Module):
             args.act_quant_params,
             False,
             args.weight_exp_quant,
+            args.weight_mix_quant,
         )
         self.v_proj = QuantLinear(
             org_module.v_proj,
@@ -56,6 +57,7 @@ class QuantOPTAttention(nn.Module):
             args.act_quant_params,
             False,
             args.weight_exp_quant,
+            args.weight_mix_quant,
         )
         self.q_proj = QuantLinear(
             org_module.q_proj,
@@ -63,6 +65,7 @@ class QuantOPTAttention(nn.Module):
             args.act_quant_params,
             False,
             args.weight_exp_quant,
+            args.weight_mix_quant,
         )
         self.out_proj = QuantLinear(
             org_module.out_proj, 
@@ -70,6 +73,7 @@ class QuantOPTAttention(nn.Module):
             args.act_quant_params,
             False,
             args.weight_exp_quant,
+            args.weight_mix_quant,
         )
         self.qkt_matmul = QuantMatMul(
             args.q_quant_params, args.k_quant_params, matmul_func=torch.bmm
@@ -265,12 +269,14 @@ class QuantOPTDecoderLayer(nn.Module):
             weight_quant_params=args.weight_quant_params,
             act_quant_params=args.act_quant_params,
             weight_exp_quant=args.weight_exp_quant,
+            weight_mix_quant=args.weight_mix_quant,
         )
         self.fc2 = QuantLinear(
             ori_layer.fc2,
             weight_quant_params=args.weight_quant_params,
             act_quant_params=args.act_quant_params,
             weight_exp_quant=args.weight_exp_quant,
+            weight_mix_quant=args.weight_mix_quant,
         )
         self.final_layer_norm = OmniLayerNorm(
             ori_layer.final_layer_norm
@@ -439,6 +445,13 @@ class QuantOPTDecoderLayer(nn.Module):
             if n.find('bound_factor') > -1:
                 params.append(m)
         return iter(params)  
+    
+    def nbits_parameters(self):
+        params = []
+        for n, m in self.named_parameters():
+            if n.find('n_bits') > -1:
+                params.append(m)
+        return iter(params)
 
     def omni_parameters(self, use_shift=True):
         params = []
@@ -461,4 +474,25 @@ class QuantOPTDecoderLayer(nn.Module):
         for name, module in self.named_modules():
             if isinstance(module, QuantLinear):
                 module.weight_quantizer.register_scales_and_zeros()
+
+    def get_size_loss(self):
+        model_sizes = torch.zeros((6,1))                                                       # 就累加各个层的size的mseloss
+        target_sizes = torch.zeros((6,1))
+        i = 0
+        for name, module in self.named_modules():
+            if isinstance(module, QuantLinear):
+                model_size, target_size = module.weight_quantizer.model_size_loss()
+                model_sizes[i] = model_size
+                target_sizes[i] = target_size
+                i += 1
+        return model_sizes, target_sizes
     
+    def set_hard_quant(self):
+        for name, module in self.named_modules():
+            if isinstance(module, QuantLinear):
+                module.weight_quantizer.set_hard()
+
+    def round_nbits(self):
+        for name, module in self.named_modules():
+            if isinstance(module, QuantLinear):
+                module.weight_quantizer.round_nbits()

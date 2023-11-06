@@ -198,7 +198,7 @@ def main():
     # parser.add_argument("--output_dir", default="./log/llama-2-7b-w3a16", type=str, help="direction of logging file")
     parser.add_argument("--net", type=str, default="opt-125m", choices=net_choices)
     parser.add_argument("--output_dir", default="./log/opt-125m-w3a16", type=str, help="direction of logging file")
-    parser.add_argument("--epochs", type=int, default=2)                                                                # ltl
+    parser.add_argument("--epochs", type=int, default=0)                                                                # ltl
     parser.add_argument("--save_dir", default=None, type=str, help="direction for saving fake quantization model")
     parser.add_argument("--resume", type=str, default=None)
     parser.add_argument("--real_quant", default=False, action="store_true",)
@@ -212,7 +212,7 @@ def main():
     parser.add_argument("--tasks", default="")
     parser.add_argument("--eval_ppl", default=True, action="store_true")
     parser.add_argument("--num_fewshot", type=int, default=0)
-    parser.add_argument("--wbits", type=int, default=3)                                                                     # ltl
+    parser.add_argument("--wbits", type=int, default=2.9)   # 设置目标bit位为2.8，然后量化到平均3bit以内就ok了                # ltl
     parser.add_argument("--abits", type=int, default=8)                                                                    # ltl
     parser.add_argument("--group_size", type=int, default=None)
     parser.add_argument("--alpha", type=float, default=0.5)
@@ -227,7 +227,7 @@ def main():
                         help="activate learnable weight clipping")                # ltl
     parser.add_argument("--aug_loss", default=False, action="store_true", help="calculate additional loss with same input")
     parser.add_argument("--symmetric",default=False, action="store_true", help="symmetric quantization")
-    parser.add_argument("--a_dynamic_method", type=str, default="per_cluster", choices=["per_token", "per_tensor", "per_cluster"]) # ltl
+    parser.add_argument("--a_dynamic_method", type=str, default="per_tensor", choices=["per_token", "per_tensor", "per_cluster"]) # ltl
     parser.add_argument("--w_dynamic_method", type=str, default="per_channel", choices=["per_channel"])
     parser.add_argument("--limit", type=int, default=-1)
     parser.add_argument("--multigpu", action="store_true", help="at eval, map model to multiple gpus")
@@ -248,7 +248,11 @@ def main():
     parser.add_argument("--weight_exp_quant", action="store_true",
                         help="use exponent quantization for weights") # ltl
     parser.add_argument("--w_symmetric", action="store_true")      # 经过我的测试，对指数量化来说，非对称量化竟然不如对称量化，loss也更大,所以如果加了weight_exp_quant，就一定要加w_symmetric
-    parser.add_argument("weight_mix", action="store_true")          # 是否使用混合bit量化weights，并展开搜索
+    parser.add_argument("--weight_mix_quant", action="store_true",
+                        default=True,
+                         help="whether to use mix bit quantization for weights")          # 是否使用混合bit量化weights，并展开搜索
+    parser.add_argument("--nbits_lr", type=float, default=0.5, help="learning rate of nbits of weights")
+    parser.add_argument("--loss_size_coef", type=float, default=0.01)                       # size loss的系数
 
     args = parser.parse_args()
     random.seed(args.seed)
@@ -318,7 +322,7 @@ def main():
     
 
     args.weight_quant_params = {
-        "n_bits": args.wbits,
+        "n_bits": args.wbits if not args.weight_mix_quant else [],
         "per_channel_axes": [0],
         # "symmetric": args.symmetric if not args.weight_exp_quant else True,                                                 # 看来对权重用点对称量化问题不大，对激活值坚决不能用
         "symmetric": args.w_symmetric,
@@ -326,7 +330,8 @@ def main():
         "group_size": args.group_size,
         "lwc":args.lwc,                                                                                                 # 权重相比于激活值，有这么个参数
         "dynamic": True,                                                                                                # 权重的dynamic是true，只是为了对它进行per_channel的量化，不是真的动态
-        "metric": "minmax"
+        "metric": "minmax",
+        "target_bit":args.wbits,
     }
     args.act_quant_params = {
         "n_bits":  args.abits,

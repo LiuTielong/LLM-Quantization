@@ -11,7 +11,6 @@ CLIPMIN = 1e-5
 
 
 
-
 def round_ste(x: torch.Tensor):
     """
     Implement Straight-Through Estimator for rounding operation.
@@ -34,7 +33,8 @@ class ExpAffineQuantizer(nn.Module):
         dynamic_method="per_cluster",
         group_size=None,
         shape=None,
-        lwc=False
+        lwc=False,
+        target_bit=0,
     ):
         """
         support cluster quantize

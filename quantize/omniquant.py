@@ -396,7 +396,7 @@ def omniquant(
 
 
         # 2.2 OmniQuant部分
-        # obtain output of full-precision model
+        # 2.2.1 obtain output of full-precision model
         qlayer.set_quant_state(weight_quant=False, act_quant=False)
         if args.epochs > 0:
             with torch.no_grad():
@@ -406,7 +406,7 @@ def omniquant(
                         if args.aug_loss:
                             fp_inps_2[j] = qlayer(quant_inps[j].unsqueeze(0), attention_mask=attention_mask,position_ids=position_ids)[0]
 
-        # init smooth parameters
+        # 2.2.2 init smooth parameters
         qlayer.set_quant_state(weight_quant=False, act_quant=True)  # weight will be manually quantized before forward
         qlayer.let = args.let
         use_shift = True 
@@ -414,6 +414,7 @@ def omniquant(
         #     use_shift = False                   # deactivate channel-wise shifting for llama weight-
         # use_shift = True if args.abits < 16 else False   # only activate per-channel shifting when weight-activation quantization
         
+        # 2.2.3 获得所有的scale参数 
         if args.let:
             # init channel-wise scaling and shift
             qlayer.register_parameter("qkt_smooth_scale",torch.nn.Parameter(torch.ones(layer.self_attn.q_proj.out_features,device=dev, dtype=dtype)))
@@ -452,13 +453,20 @@ def omniquant(
         if args.resume:
             qlayer.load_state_dict(omni_parameters[i], strict=False)
         
-
+        # 2.2.4 迭代搜索最优参数
         if args.epochs > 0:
             with torch.no_grad():
                 qlayer.float()      # required for AMP training
             # create optimizer
-            optimizer = torch.optim.AdamW(
-                [{"params":qlayer.let_parameters(use_shift),"lr":args.let_lr}, {"params":qlayer.lwc_parameters(),"lr":args.lwc_lr}],weight_decay=args.wd)
+            if not args.weight_mix_quant:
+                optimizer = torch.optim.AdamW(
+                    [{"params":qlayer.let_parameters(use_shift),"lr":args.let_lr}, {"params":qlayer.lwc_parameters(),"lr":args.lwc_lr}],weight_decay=args.wd)
+            else:
+                optimizer = torch.optim.AdamW(
+                    [{"params":qlayer.let_parameters(use_shift),"lr":args.let_lr}, 
+                     {"params":qlayer.lwc_parameters(),"lr":args.lwc_lr},
+                     {"params":qlayer.nbits_parameters(),"lr":args.nbits_lr}
+                     ],weight_decay=args.wd)
             loss_scaler = utils.NativeScalerWithGradNormCount()
             """
             其中, let_parameters一共有7个数组, 大小都是[768]. 第一个是qkt的scale,初始化为全1。
@@ -468,10 +476,22 @@ def omniquant(
             lwc_paramters一共有12个数组, 10个大小为[768,1], 另外两个为[3072,1]. 它们来自所有被建立了quantizer的权重矩阵, 
             有自己的upbound_factor和down_bound_factor. 一共有6个权重矩阵。
             """
-
+            loss_size_coef = args.loss_size_coef
             for epochs in range(args.epochs):
                 loss_list = []
                 norm_list = []
+                if args.weight_mix_quant:                                                                       # 增加weights量化的size损失
+                    # if epochs == round(args.epochs * 0.25):
+                    #     loss_size_coef = args.loss_size_coef / 10                                               # 不行啊，如果减小weight的loss，loss_quant将会把bit位又拉得很高。
+                    if epochs == round(args.epochs * 0.5):                                                            # 硬量化，就是权重的量化的bit位都改成整数
+                        qlayer.set_hard_quant()                                                                      
+                        # loss_size_coef = args.loss_size_coef / 10                                                               
+                    if epochs == round(args.epochs * 0.75):                                                                     # 之后就不优化nbits了
+                        qlayer.round_nbits()
+                        for param_group in optimizer.param_groups:
+                            if param_group["lr"] == args.nbits_lr:
+                                param_group["lr"] = 0
+                        loss_size_coef = 0
                 for j in range(args.nsamples//args.batch_size):    
                     index = j * args.batch_size
                     # obtain output of quantization model
@@ -484,14 +504,19 @@ def omniquant(
                         loss = loss_func(fp_inps[index:index+args.batch_size,], quant_out)                              # 全精度模型的输出和量化后模型的输出作差求loss函数。
                         if args.aug_loss:
                             loss += loss_func(fp_inps_2[index:index+args.batch_size,], quant_out)
+                        if args.weight_mix_quant:                                                                       # 增加weights量化的size损失
+                            model_sizes, target_sizes = qlayer.get_size_loss()
+                            # print(qlayer.fc1.weight_quantizer.n_bits[0:30])
+                            loss_size = loss_func(model_sizes, target_sizes) * loss_size_coef
+                            loss = loss + loss_size
                     if not math.isfinite(loss.item()):
                         logger.info("Loss is NAN, stopping training")
                         pdb.set_trace()
                         
                     loss_list.append(loss.data)
                     optimizer.zero_grad()
-                    norm = loss_scaler(loss, optimizer,parameters=qlayer.omni_parameters(use_shift))                    # 看样子这里是更新参数
-                    norm_list.append(norm.data)                                                                         # 在不断地更新优化器的参数
+                    norm = loss_scaler(loss, optimizer,parameters=qlayer.omni_parameters(use_shift))                    # 这里是更新optimizer的参数
+                    norm_list.append(norm.data)                                                                         
                     
                     """
                     需要清空所有a_quantizer的cached_max, cached_min
@@ -506,10 +531,39 @@ def omniquant(
                 loss_mean = torch.stack(loss_list).mean()
                 norm_mean = torch.stack(norm_list).mean()
                 logger.info(f"layer {i} iter {epochs} loss:{loss_mean} norm:{norm_mean} max memory_allocated {torch.cuda.max_memory_allocated(lm._device) / 1024**2} ")
+
+                if args.weight_mix_quant:
+                    mean_bits = torch.zeros(12)
+                    mean_bits[0:4] = (torch.mean(qlayer.fc1.weight_quantizer.n_bits))           # fc1和fc2的大小相当于4个q_proj
+                    mean_bits[4:8] = (torch.mean(qlayer.fc2.weight_quantizer.n_bits)) 
+                    mean_bits[8] = (torch.mean(qlayer.self_attn.q_proj.weight_quantizer.n_bits))
+                    mean_bits[9] = (torch.mean(qlayer.self_attn.k_proj.weight_quantizer.n_bits))
+                    mean_bits[10] = (torch.mean(qlayer.self_attn.v_proj.weight_quantizer.n_bits))
+                    mean_bits[11] = (torch.mean(qlayer.self_attn.out_proj.weight_quantizer.n_bits))
+                    meanmean_bit = torch.mean(mean_bits)
+                    print(meanmean_bit)
             qlayer.clear_temp_variable()
             del optimizer
 
+
+
+
+
+        # 2.2.5 迭代结束，善后工作 
         # real smooth and quantization
+        if args.weight_mix_quant:
+            qlayer.round_nbits()
+            # print(qlayer.fc1.weight_quantizer.n_bits[0:30])
+            mean_bits = torch.zeros(12)
+            mean_bits[0:4] = (torch.mean(qlayer.fc1.weight_quantizer.n_bits))           # fc1和fc2的大小相当于4个q_proj
+            mean_bits[4:8] = (torch.mean(qlayer.fc2.weight_quantizer.n_bits)) 
+            mean_bits[8] = (torch.mean(qlayer.self_attn.q_proj.weight_quantizer.n_bits))
+            mean_bits[9] = (torch.mean(qlayer.self_attn.k_proj.weight_quantizer.n_bits))
+            mean_bits[10] = (torch.mean(qlayer.self_attn.v_proj.weight_quantizer.n_bits))
+            mean_bits[11] = (torch.mean(qlayer.self_attn.out_proj.weight_quantizer.n_bits))
+            meanmean_bit = torch.mean(mean_bits)
+            print(meanmean_bit)
+
         qlayer.smooth_and_quant_inplace()                                                                               # 这里就是把qlayer所有的权重矩阵/layernorm层参数用优化好了的那些scale, shift参数来重新计算一遍
         if args.epochs>0:                                                                                               # 其中, 权重矩阵都要做per_output_channel的量化
             # update input of quantization model

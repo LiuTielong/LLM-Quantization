@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from quantize.quantizer import UniformAffineQuantizer
 from quantize.quantizer_exp import ExpAffineQuantizer
+from quantize.quantizer_mix import MixAffineQuantizer
 import numpy as np
 
 
@@ -21,6 +22,7 @@ class QuantLinear(nn.Module):
         act_quant_params: dict = {},
         disable_input_quant=False,
         weight_exp_quant=False,
+        weight_mix_quant=False,
     ):
         super().__init__()
         self.fwd_kwargs = dict()
@@ -38,6 +40,8 @@ class QuantLinear(nn.Module):
         # initialize quantizer
         if weight_exp_quant:
             self.weight_quantizer = ExpAffineQuantizer(**weight_quant_params, shape=org_module.weight.shape)
+        elif weight_mix_quant:
+            self.weight_quantizer = MixAffineQuantizer(**weight_quant_params, shape=org_module.weight.shape)
         else:
             self.weight_quantizer = UniformAffineQuantizer(**weight_quant_params,shape=org_module.weight.shape)
         if not disable_input_quant:

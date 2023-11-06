@@ -37,7 +37,7 @@ class MixAffineQuantizer(nn.Module):
     def __init__(
         self,
         target_bit: int=4,                      # 目标bit位
-        n_bits: torch.Tensor=[],                # 在初始化的时候要不都整4.5bit
+        n_bits: torch.Tensor=[],                
         hard_assign=False,                      # 初始是false，改为true的时候表示所有的bit位都要改成int进行计算了。     
         threshold=0.0,                          # 仿照Fracbits里面加入了一个threshold                  
         symmetric: bool = False,
@@ -58,7 +58,10 @@ class MixAffineQuantizer(nn.Module):
 
         self.target_bit = target_bit
         # self.n_bits = n_bits
-        self.n_bits = nn.Parameter(n_bits)
+        if n_bits == []:
+            len = shape[0]
+            n_bits = (torch.ones(len,1) * self.target_bit + 0.5 + torch.rand(len, 1) / 4).to("cuda")
+        self.n_bits = nn.Parameter(n_bits)              # 创建参数
         self.hard_assign = hard_assign
         self.threshold=threshold
 
@@ -139,9 +142,11 @@ class MixAffineQuantizer(nn.Module):
 
     def forward(self, x: torch.Tensor):
         self.shape = x.shape
+        self.n_bits.data = self.n_bits.data.clamp(2, 8)                                                                         # 非常重要，否则量化过程中会导致x变成nan
         n_bits = self.n_bits
         if self.hard_assign:
-            n_bits = round_ste(n_bits + self.threshold)                                                                        # 在第二阶段，bit数要换成整数
+            n_bits = round_ste(n_bits + self.threshold)                                                                        # 在第二阶段，bit数要换成整数                                                                                           
+        assert torch.all(n_bits >= 2), "有量化bit位太小了"
         if self.group_size:
             if self.deficiency == 0:
                 x = x.reshape(-1,self.group_size)
@@ -195,22 +200,34 @@ class MixAffineQuantizer(nn.Module):
         self.cached_xmax = None
         self.cached_xmin = None
 
+    """
+    本来是用来计算模型的size惩罚项的，后面我为了多个layer的惩罚项一起计算，就
+    让这个函数返回目标size和实际size。
+    """
     def model_size_loss(self):
-        prop = 1e3 * self.shape[0] * self.shape[1]
+        loss_func = torch.nn.MSELoss()
+        prop = self.shape[0] * self.shape[1]                                                                            # 除以这个权重矩阵的大小，得到的loss就是平均每个权重的损失
         n_bits = self.n_bits
         if self.hard_assign:
             n_bits = round_ste(n_bits + self.threshold)
-        self.target_size = self.target_bit * self.shape[0] * self.shape[1] 
-        self.model_size = torch.sum(n_bits * self.shape[1])
-        loss = torch.abs(self.model_size - self.target_size) / prop
-        return loss
+        self.target_size = self.shape[0] * self.shape[1] * self.target_bit
+        self.target_size = torch.tensor(self.target_size).to("cuda") / prop
+        self.model_size = torch.sum(n_bits * self.shape[1]) / prop
+        # loss = torch.abs(self.model_size - self.target_size) / prop
+        # loss = loss_func(self.model_size, self.target_size)
+        return self.model_size, self.target_size
 
     def set_hard(self):
         self.hard_assign = True
 
+    """
+    将所有的bit位都round成整数
+    """
     def round_nbits(self):
         self.n_bits_round = self.n_bits.data
         self.n_bits_round = round_ste(self.n_bits_round + self.threshold)
+        del self.n_bits
+        self.n_bits = self.n_bits_round
 
 
 
@@ -218,47 +235,54 @@ class MixAffineQuantizer(nn.Module):
 def main():
     torch.manual_seed(10)
     x = torch.rand([4, 10000]).to("cuda")                                                                                             # 对x来说，input_channel是列，也就是10列。而output channel有4行。
+    x[1] = x[1] * 100                                                                                                   # 制造出非常难以量化的某一行
     # n_bits = torch.tensor([[6.8],[7.5],[6.2], [5.7]])
     n_bits = torch.tensor([[4.8],[4.5],[4.2], [4.7]]).to("cuda")
     target_bit = 3.5                                                                                                    # 我取一个非整数的target_bit，就迫使n_bits的搜索既有3又有4，如果我取target_bit=3, 就可能最后bit位都是3了
-    quantizer = MixAffineQuantizer(target_bit=target_bit, n_bits=n_bits)
-
+    quantizer = MixAffineQuantizer(target_bit=target_bit, n_bits=[], shape=x.shape)
+    k = 0.01
     # 创建一个优化器
     optimizer = torch.optim.AdamW(
-        [{"params":quantizer.n_bits, "lr":0.01}]
+        [{"params":quantizer.n_bits, "lr":0.1}]
     )
     loss_scaler = NativeScalerWithGradNormCount()
     mse_loss = torch.nn.MSELoss()
 
-    for epoch in range(200):  # 第一组epochs是优化连续的nbits
+    for epoch in range(75):  # 第一组epochs是优化连续的nbits
         x_dequant = quantizer(x)
         loss_quant = mse_loss(x, x_dequant)
-        loss_size = quantizer.model_size_loss()
-        loss = loss_size * 0.02 + loss_quant
+        model_size, target_size = quantizer.model_size_loss()
+        loss_size = mse_loss(model_size, target_size)
+        loss = loss_size * k + loss_quant
 
-        optimizer.zero_grad()
-        norm = loss_scaler(loss, optimizer, parameters=quantizer.n_bits)
         print(loss_size)
         print(loss_quant)
-        print(n_bits)
+        print(quantizer.n_bits)
+        optimizer.zero_grad()
+        norm = loss_scaler(loss, optimizer, parameters=quantizer.n_bits)
+        
 
+    print("---------------------------------------------------分界线---------------------------------------------------------------")
     quantizer.set_hard()
-    for epoch in range(50): # 第二组epochs优化离散的nbits
+    for epoch in range(25): # 第二组epochs优化离散的nbits
         x_dequant = quantizer(x)
         loss_quant = mse_loss(x, x_dequant)
-        loss_size = quantizer.model_size_loss()
-        loss = loss_size + loss_quant
+        model_size, target_size = quantizer.model_size_loss()
+        loss_size = mse_loss(model_size, target_size)
+        loss = loss_size * k + loss_quant
 
-        optimizer.zero_grad()
-        norm = loss_scaler(loss, optimizer, parameters=quantizer.n_bits)
         print(loss_size)
         print(loss_quant)
-        print(n_bits)
+        print(quantizer.n_bits)
+        optimizer.zero_grad()
+        norm = loss_scaler(loss, optimizer, parameters=quantizer.n_bits)
 
     # 最后将所有的bit位round成整数
     # 其实不要这一步也可以，因为在第二组epochs时遵循的量化规律就是把n_bits round到
     # 整数了。
     quantizer.round_nbits()
+    print(quantizer.n_bits)
+    x_dequant = quantizer(x)
 
     
 
