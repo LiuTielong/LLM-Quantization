@@ -364,12 +364,11 @@ def omniquant(
     
     # 2. 开始对每个layer做量化
     for i in range(len(layers)):
+        args.layer_num = i
         logger.info(f"=== Start quantize layer {i} ===")
         layer = layers[i].to(dev)
         qlayer = DecoderLayer(lm.model.config, layer, args)
         qlayer = qlayer.to(dev)                                                                                         # 这时候还是全精度模型
-
-
 
         # 2.1 reorder部分
         if enable_clusters:                                                                                             
@@ -452,7 +451,13 @@ def omniquant(
                                 
         if args.resume:
             qlayer.load_state_dict(omni_parameters[i], strict=False)
+
+        # torch.autograd.set_detect_anomaly(True)
         
+
+
+
+
         # 2.2.4 迭代搜索最优参数
         if args.epochs > 0:
             with torch.no_grad():
@@ -463,11 +468,12 @@ def omniquant(
                     [{"params":qlayer.let_parameters(use_shift),"lr":args.let_lr}, {"params":qlayer.lwc_parameters(),"lr":args.lwc_lr}],weight_decay=args.wd)
             else:
                 optimizer = torch.optim.AdamW(
-                    [{"params":qlayer.let_parameters(use_shift),"lr":args.let_lr}, 
+                    [# {"params":qlayer.let_parameters(use_shift),"lr":args.let_lr}, 
                      {"params":qlayer.lwc_parameters(),"lr":args.lwc_lr},
-                     {"params":qlayer.nbits_parameters(),"lr":args.nbits_lr}
+                     # {"params":qlayer.nbits_parameters(),"lr":args.nbits_lr},
+                     #{"params":qlayer.parameters(), "lr":0.0},
                      ],weight_decay=args.wd)
-            loss_scaler = utils.NativeScalerWithGradNormCount()
+            loss_scaler = utils.NativeScalerWithGradNormCount()                                                 # 所以这是什么
             """
             其中, let_parameters一共有7个数组, 大小都是[768]. 第一个是qkt的scale,初始化为全1。
             第2,3个是q_proj的输入scale, shift.
@@ -477,6 +483,7 @@ def omniquant(
             有自己的upbound_factor和down_bound_factor. 一共有6个权重矩阵。
             """
             loss_size_coef = args.loss_size_coef
+            past_loss = [1,1]
             for epochs in range(args.epochs):
                 loss_list = []
                 norm_list = []
@@ -506,7 +513,6 @@ def omniquant(
                             loss += loss_func(fp_inps_2[index:index+args.batch_size,], quant_out)
                         if args.weight_mix_quant:                                                                       # 增加weights量化的size损失
                             model_sizes, target_sizes = qlayer.get_size_loss()
-                            # print(qlayer.fc1.weight_quantizer.n_bits[0:30])
                             loss_size = loss_func(model_sizes, target_sizes) * loss_size_coef
                             loss = loss + loss_size
                     if not math.isfinite(loss.item()):
@@ -531,7 +537,12 @@ def omniquant(
                 loss_mean = torch.stack(loss_list).mean()
                 norm_mean = torch.stack(norm_list).mean()
                 logger.info(f"layer {i} iter {epochs} loss:{loss_mean} norm:{norm_mean} max memory_allocated {torch.cuda.max_memory_allocated(lm._device) / 1024**2} ")
-
+                # if args.weight_exp_quant:                                                           # 指数量化的迭代过程有点不稳定，所以我增加一个迭代终止条件，及时终止
+                #     if (loss_mean > past_loss[1] 
+                #         and past_loss[1] > past_loss[0]):
+                #         break
+                #     past_loss[0] = past_loss[1]
+                #     past_loss[1] = loss_mean
                 if args.weight_mix_quant:
                     mean_bits = torch.zeros(12)
                     mean_bits[0:4] = (torch.mean(qlayer.fc1.weight_quantizer.n_bits))           # fc1和fc2的大小相当于4个q_proj
@@ -545,6 +556,7 @@ def omniquant(
             qlayer.clear_temp_variable()
             del optimizer
 
+        
 
 
 

@@ -42,6 +42,9 @@ class QuantOPTAttention(nn.Module):
         self.scaling = self.head_dim**-0.5                                                                              # 
         self.is_decoder = is_decoder
 
+        # weight_nbits = torch.load(f'grads_results/layer{args.layer_num}_nbits.pt')
+        weight_nbits = torch.load(f'grads_results_uniform/layer{args.layer_num}_nbits.pt').to(org_module.k_proj.weight.device)
+
         # input is quantized by LayerNorm, set disable_input_quant=True
         self.k_proj = QuantLinear(
             org_module.k_proj,
@@ -50,6 +53,8 @@ class QuantOPTAttention(nn.Module):
             False,
             args.weight_exp_quant,
             args.weight_mix_quant,
+            weight_mix2_quant=args.weight_mix2_quant,
+            weight_nbits=weight_nbits[3072+768*2:3072+768*3]
         )
         self.v_proj = QuantLinear(
             org_module.v_proj,
@@ -58,6 +63,8 @@ class QuantOPTAttention(nn.Module):
             False,
             args.weight_exp_quant,
             args.weight_mix_quant,
+            weight_mix2_quant=args.weight_mix2_quant,
+            weight_nbits=weight_nbits[3072+768*3:3072+768*4]
         )
         self.q_proj = QuantLinear(
             org_module.q_proj,
@@ -66,6 +73,8 @@ class QuantOPTAttention(nn.Module):
             False,
             args.weight_exp_quant,
             args.weight_mix_quant,
+            weight_mix2_quant=args.weight_mix2_quant,
+            weight_nbits=weight_nbits[3072+768:3072+768*2]
         )
         self.out_proj = QuantLinear(
             org_module.out_proj, 
@@ -74,6 +83,8 @@ class QuantOPTAttention(nn.Module):
             False,
             args.weight_exp_quant,
             args.weight_mix_quant,
+            weight_mix2_quant=args.weight_mix2_quant,
+            weight_nbits=weight_nbits[3072+768*4:3072+768*5]
         )
         self.qkt_matmul = QuantMatMul(
             args.q_quant_params, args.k_quant_params, matmul_func=torch.bmm
@@ -237,10 +248,6 @@ class QuantOPTAttention(nn.Module):
 
 
 
-
-
-  
-
 class QuantOPTDecoderLayer(nn.Module):
     def __init__(
         self,
@@ -264,12 +271,16 @@ class QuantOPTDecoderLayer(nn.Module):
         self.self_attn_layer_norm = OmniLayerNorm(
             ori_layer.self_attn_layer_norm
         )
+        # weight_nbits = torch.load(f'grads_results/layer{args.layer_num}_nbits.pt')
+        weight_nbits = torch.load(f'grads_results_uniform/layer{args.layer_num}_nbits.pt').to(ori_layer.fc1.weight.device)
         self.fc1 = QuantLinear(
             ori_layer.fc1,
             weight_quant_params=args.weight_quant_params,
             act_quant_params=args.act_quant_params,
             weight_exp_quant=args.weight_exp_quant,
             weight_mix_quant=args.weight_mix_quant,
+            weight_mix2_quant=args.weight_mix2_quant,
+            weight_nbits=weight_nbits[0:3072]
         )
         self.fc2 = QuantLinear(
             ori_layer.fc2,
@@ -277,6 +288,8 @@ class QuantOPTDecoderLayer(nn.Module):
             act_quant_params=args.act_quant_params,
             weight_exp_quant=args.weight_exp_quant,
             weight_mix_quant=args.weight_mix_quant,
+            weight_mix2_quant=args.weight_mix2_quant,
+            weight_nbits=weight_nbits[3072:3072+768]
         )
         self.final_layer_norm = OmniLayerNorm(
             ori_layer.final_layer_norm

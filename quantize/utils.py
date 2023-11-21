@@ -27,8 +27,8 @@ class NativeScalerWithGradNormCount:
     state_dict_key = "amp_scaler"
 
     def __init__(self):
-        self._scaler = torch.cuda.amp.GradScaler()                                                                      # 前面一个短横线表示这是一个私有变量，不能从外界直接访问
-        # GradScaler就是为了防止fp16出现数值溢出问题，提供的梯度scaling操作。
+        self._scaler = torch.cuda.amp.GradScaler()
+
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True,retain_graph=False):
         self._scaler.scale(loss).backward(create_graph=create_graph, retain_graph=retain_graph)
         if update_grad:

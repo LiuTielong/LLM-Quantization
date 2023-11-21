@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from quantize.quantizer import UniformAffineQuantizer
-from quantize.quantizer_exp import ExpAffineQuantizer
+from quantize.quantizer_exp_v2 import ExpAffineQuantizer
 from quantize.quantizer_mix import MixAffineQuantizer
+from quantize.quantizer_mix_v2 import Mix2AffineQuantizer
 import numpy as np
-
+import copy
 
 
 
@@ -23,13 +24,18 @@ class QuantLinear(nn.Module):
         disable_input_quant=False,
         weight_exp_quant=False,
         weight_mix_quant=False,
+        weight_mix2_quant=False,
+        weight_nbits:torch.Tensor=[],
+        
     ):
         super().__init__()
         self.fwd_kwargs = dict()
         self.fwd_func = F.linear
         self.register_buffer('weight',org_module.weight)
+        # self.weight = torch.nn.Parameter(copy.deepcopy(org_module.weight))                                                # 这两行令weight和bias为参数是在我求导数的时候用的，导数求完了它就该关闭了
         if org_module.bias is not None:
             self.register_buffer('bias',org_module.bias)
+            # self.bias = torch.nn.Parameter(copy.deepcopy(org_module.bias))
         else:
             self.bias = None
         self.in_features = org_module.in_features
@@ -42,6 +48,8 @@ class QuantLinear(nn.Module):
             self.weight_quantizer = ExpAffineQuantizer(**weight_quant_params, shape=org_module.weight.shape)
         elif weight_mix_quant:
             self.weight_quantizer = MixAffineQuantizer(**weight_quant_params, shape=org_module.weight.shape)
+        elif weight_mix2_quant:
+            self.weight_quantizer = Mix2AffineQuantizer(**weight_quant_params, shape=org_module.weight.shape, mix2_nbits=weight_nbits)
         else:
             self.weight_quantizer = UniformAffineQuantizer(**weight_quant_params,shape=org_module.weight.shape)
         if not disable_input_quant:

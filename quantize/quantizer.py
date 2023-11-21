@@ -10,8 +10,6 @@ import math
 CLIPMIN = 1e-5
 
 
-
-
 def round_ste(x: torch.Tensor):
     """
     Implement Straight-Through Estimator for rounding operation.
@@ -107,7 +105,7 @@ class UniformAffineQuantizer(nn.Module):
             assert len(x.shape)==2, "only support linear layer now"
             dim1, dim2 = x.shape
             x = x.reshape(-1, self.group_size)
-        x_int = round_ste(x / scale)
+        x_int = round_ste(x / scale)   # ltl做个实验
 
         if round_zero_point is not None:
             x_int = x_int.add(round_zero_point)

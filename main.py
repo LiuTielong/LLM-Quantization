@@ -20,7 +20,8 @@ from categories import subcategories, categories
 from models.int_llama_layer import QuantLlamaDecoderLayer
 from models.int_opt_layer import QuantOPTDecoderLayer
 from quantize.int_linear import QuantLinear
-
+from eigenvalues import * 
+from get_grads import * 
 import pdb
 
 
@@ -197,7 +198,7 @@ def main():
     # parser.add_argument("--net", type=str, default="llama-2-13b", choices=net_choices)
     # parser.add_argument("--output_dir", default="./log/llama-2-7b-w3a16", type=str, help="direction of logging file")
     parser.add_argument("--net", type=str, default="opt-125m", choices=net_choices)
-    parser.add_argument("--output_dir", default="./log/opt-125m-w3a16", type=str, help="direction of logging file")
+    parser.add_argument("--output_dir", default="./log/opt-125m-exp", type=str, help="direction of logging file")
     parser.add_argument("--epochs", type=int, default=0)                                                                # ltl
     parser.add_argument("--save_dir", default=None, type=str, help="direction for saving fake quantization model")
     parser.add_argument("--resume", type=str, default=None)
@@ -212,7 +213,7 @@ def main():
     parser.add_argument("--tasks", default="")
     parser.add_argument("--eval_ppl", default=True, action="store_true")
     parser.add_argument("--num_fewshot", type=int, default=0)
-    parser.add_argument("--wbits", type=int, default=2.9)   # 设置目标bit位为2.8，然后量化到平均3bit以内就ok了                # ltl
+    parser.add_argument("--wbits", type=int, default=3)   # 对于混合bit量化，设置目标bit位为2.8，然后量化到平均3bit以内就ok了                # ltl
     parser.add_argument("--abits", type=int, default=8)                                                                    # ltl
     parser.add_argument("--group_size", type=int, default=None)
     parser.add_argument("--alpha", type=float, default=0.5)
@@ -246,13 +247,19 @@ def main():
     parser.add_argument("--R4_clusters", type=int, default=32)
     parser.add_argument("--R5_clusters", type=int, default=32)
     parser.add_argument("--weight_exp_quant", action="store_true",
-                        help="use exponent quantization for weights") # ltl
-    parser.add_argument("--w_symmetric", action="store_true")      # 经过我的测试，对指数量化来说，非对称量化竟然不如对称量化，loss也更大,所以如果加了weight_exp_quant，就一定要加w_symmetric
+                        # default=True,                                        # ltl
+                        help="use exponent quantization for weights") 
+    parser.add_argument("--w_symmetric", 
+                        # default=True,                                       # ltl
+                        action="store_true")      
     parser.add_argument("--weight_mix_quant", action="store_true",
-                        default=True,
+                        # default=True,
                          help="whether to use mix bit quantization for weights")          # 是否使用混合bit量化weights，并展开搜索
     parser.add_argument("--nbits_lr", type=float, default=0.5, help="learning rate of nbits of weights")
     parser.add_argument("--loss_size_coef", type=float, default=0.01)                       # size loss的系数
+    parser.add_argument("--weight_mix2_quant", action="store_true",
+                        # default=True,
+                        )
 
     args = parser.parse_args()
     random.seed(args.seed)
@@ -266,6 +273,7 @@ def main():
         
     if (args.wbits<16 and args.wbits>=8) or (args.abits<16 and args.abits>=8):
         args.deactive_amp = True
+    
 
     # init logger
     if args.output_dir:
@@ -323,6 +331,7 @@ def main():
 
     args.weight_quant_params = {
         "n_bits": args.wbits if not args.weight_mix_quant else [],
+        # "n_bits":16,
         "per_channel_axes": [0],
         # "symmetric": args.symmetric if not args.weight_exp_quant else True,                                                 # 看来对权重用点对称量化问题不大，对激活值坚决不能用
         "symmetric": args.w_symmetric,
@@ -407,6 +416,22 @@ def main():
         if args.let:
             act_scales = torch.load(args.act_scales)
             act_shifts = torch.load(args.act_shifts)
+        
+        # args.deactive_amp = True        # 算梯度需要
+        # eigenvalues(
+        #     lm,
+        #     args,
+        #     dataloader,
+        # )
+        # return 
+
+        # get_grads(
+        #     lm, 
+        #     args, 
+        #     dataloader,
+        # )
+        # return 
+    
         omniquant(
             lm,
             args,
